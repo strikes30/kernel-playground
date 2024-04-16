@@ -177,7 +177,7 @@ update_map_block_protected(struct hmap_elem *helem,
 #if ALWAYS_PRINT_UPDATE
 static __always_inline void print_hmap_elem_ab(struct hmap_elem_ab *ab)
 {
-	bpf_printk("hmap_elem_ab (a=%lu, b=%lu)", ab->a, ab->b);
+	bpf_printk("hmap_elem_ab (a=%llu, b=%llu)", ab->a, ab->b);
 }
 #endif
 
@@ -219,7 +219,7 @@ static int timer_cb(void *map, int *key, struct hmap_elem *helem)
 
 	update_map_block_protected(helem, &copy_ab);
 
-	bpf_printk("timer_cb called, key=%d, helem->counter=%lu, (a=%lu, b=%lu)",
+	bpf_printk("timer_cb called, key=%d, helem->counter=%llu, (a=%llu, b=%llu)",
 		   *key, helem->counter, copy_ab.a, copy_ab.b);
 
 	return 0;
