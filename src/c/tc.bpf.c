@@ -283,7 +283,7 @@ struct hmap_elem *hmap_elem_init_or_get(void *map, __u32 *key)
 
 	/* we need to initialize the element */
 	memset(&init, 0, sizeof(init));
-	init.counter = 1;
+	init.counter = 0;
 
 	/* note that updating an hashtable element is an atomic op */
 	rc = bpf_map_update_elem(map, key, &init, BPF_NOEXIST);
