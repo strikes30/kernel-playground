@@ -303,12 +303,12 @@ lookup:
 
 	/* see https://reviews.llvm.org/D72184 */
 	if (__sync_lock_test_and_set(&val->init, 1))
-		/* already initializei */
+		/* already initialized */
 		return val;
 
 	/* only a single CPU can be here */
 
-	/* we want initialize a timer only once.
+	/* we want to initialize a timer only once.
 	 * A timer needs to be defined inside a map element which is already
 	 * stored in the map. For this reason, we cannot  use a
 	 * publish/subscribe approach - e.g. create a map element, initialize
