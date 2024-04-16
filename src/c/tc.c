@@ -4,6 +4,8 @@
 #include <unistd.h>
 #include "tc.skel.h"
 
+#include "common.h"
+
 #define LO_IFINDEX 1
 
 static volatile sig_atomic_t exiting = 0;
@@ -18,12 +20,23 @@ static int libbpf_print_fn(enum libbpf_print_level level, const char *format, va
 	return vfprintf(stderr, format, args);
 }
 
+int handle_event(void *ctx, void *data, size_t data_sz)
+{
+	const struct event *e = data;
+
+	printf("ts: %llu, flowid: %llu, a: %llu\n",
+	       e->ts, e->flowid, e->counter);
+
+	return 0;
+}
+
 int main(int argc, char **argv)
 {
 	DECLARE_LIBBPF_OPTS(bpf_tc_hook, tc_hook, .ifindex = LO_IFINDEX,
 			    .attach_point = BPF_TC_INGRESS);
 	DECLARE_LIBBPF_OPTS(bpf_tc_opts, tc_opts, .handle = 1, .priority = 1);
 	bool hook_created = false;
+	struct ring_buffer *rbuf;
 	struct tc_bpf *skel;
 	int err;
 
@@ -62,12 +75,29 @@ int main(int argc, char **argv)
 		goto cleanup;
 	}
 
+	/* ring buffer */
+	rbuf = ring_buffer__new(bpf_map__fd(skel->maps.rbuf), handle_event,
+				NULL, NULL);
+	if (!rbuf) {
+		err = -1;
+		fprintf(stderr, "Failed to create ring buffer\n");
+		goto cleanup;
+	}
+
 	printf("Successfully started! Please run `sudo cat /sys/kernel/debug/tracing/trace_pipe` "
 	       "to see output of the BPF program.\n");
 
 	while (!exiting) {
-		fprintf(stderr, ".");
-		sleep(1);
+		err = ring_buffer__poll(rbuf, 100 /* timeout, ms */);
+		if (err == -EINTR) {
+			err = 0;
+			break;
+		}
+
+		if (err < 0) {
+			printf("Error polling ring buffer: %d\n", err);
+			break;
+		}
 	}
 
 	tc_opts.flags = tc_opts.prog_fd = tc_opts.prog_id = 0;
@@ -78,6 +108,8 @@ int main(int argc, char **argv)
 	}
 
 cleanup:
+	ring_buffer__free(rbuf);
+
 	if (hook_created)
 		bpf_tc_hook_destroy(&tc_hook);
 	tc_bpf__destroy(skel);

@@ -9,6 +9,8 @@
 #include <bpf/bpf_helpers.h>
 #include <bpf/bpf_tracing.h>
 
+#include "common.h"
+
 #define TC_ACT_OK		0
 #define TC_ACT_SHOT		2
 
@@ -26,6 +28,8 @@
 
 #include <bpf/bpf_helpers.h>
 #include <bpf/bpf_endian.h>
+
+#include "common.h"
 
 #endif
 
@@ -108,6 +112,13 @@ static __always_inline void __write_once_size(volatile void *p, void *res, int s
 	__u.__val;					\
 })
 #endif
+
+/* in KB */
+#define RB_SIZE (254 * 1024)
+struct {
+	__uint(type, BPF_MAP_TYPE_RINGBUF);
+	__uint(max_entries, RB_SIZE);
+} rbuf SEC(".maps");
 
 struct hmap_elem_ab {
 	__u64 a;
@@ -216,12 +227,27 @@ static __always_inline int update_test_hmap(struct hmap_elem *helem)
 static int timer_cb(void *map, int *key, struct hmap_elem *helem)
 {
 	struct hmap_elem_ab copy_ab;
+	struct event *e;
 
 	update_map_block_protected(helem, &copy_ab);
 
 	bpf_printk("timer_cb called, key=%d, helem->counter=%llu, (a=%llu, b=%llu)",
 		   *key, helem->counter, copy_ab.a, copy_ab.b);
 
+	/* let's send data to userspace using ring buffer */
+	e = bpf_ringbuf_reserve(&rbuf, sizeof(*e), 0);
+	if (!e)
+		/* no space left on ring buffer */
+		goto out;
+
+	/* fill the event */
+	e->ts = bpf_ktime_get_ns();
+	/* TODO: harcoded at the moment */
+	e->flowid = 1;
+	e->counter = copy_ab.a;
+
+	bpf_ringbuf_submit(e, 0);
+out:
 	return 0;
 }
 
