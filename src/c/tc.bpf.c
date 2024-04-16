@@ -29,7 +29,8 @@
 
 #endif
 
-#define ETH_P_IP  0x0800 /* Internet Protocol packet	*/
+#define ETH_P_IP	0x0800 /* Internet Protocol packet */
+#define ETH_P_IPV6	0x86DD /* Internet Protocol V6 packet */
 
 #ifndef memset
 # define memset(dest, chr, n)   __builtin_memset((dest), (chr), (n))
@@ -43,10 +44,90 @@
 # define memmove(dest, src, n)  __builtin_memmove((dest), (src), (n))
 #endif
 
+/*
+ * Note: including linux/compiler.h or linux/kernel.h for the macros below
+ * conflicts with vmlinux.h include in BPF files, so we define them here.
+ *
+ * Following functions are taken from kernel sources and
+ * break aliasing rules in their original form.
+ *
+ * While kernel is compiled with -fno-strict-aliasing,
+ * perf uses -Wstrict-aliasing=3 which makes build fail
+ * under gcc 4.4.
+ *
+ * Using extra __may_alias__ type to allow aliasing
+ * in this case.
+ */
+typedef __u8  __attribute__((__may_alias__))  __u8_alias_t;
+typedef __u16 __attribute__((__may_alias__)) __u16_alias_t;
+typedef __u32 __attribute__((__may_alias__)) __u32_alias_t;
+typedef __u64 __attribute__((__may_alias__)) __u64_alias_t;
+
+static __always_inline void __read_once_size(const volatile void *p, void *res, int size)
+{
+	switch (size) {
+	case 1: *(__u8_alias_t  *) res = *(volatile __u8_alias_t  *) p; break;
+	case 2: *(__u16_alias_t *) res = *(volatile __u16_alias_t *) p; break;
+	case 4: *(__u32_alias_t *) res = *(volatile __u32_alias_t *) p; break;
+	case 8: *(__u64_alias_t *) res = *(volatile __u64_alias_t *) p; break;
+	default:
+		asm volatile ("" : : : "memory");
+		__builtin_memcpy((void *)res, (const void *)p, size);
+		asm volatile ("" : : : "memory");
+	}
+}
+
+#define READ_ONCE(x)					\
+({							\
+	union { typeof(x) __val; char __c[1]; } __u =	\
+		{ .__c = { 0 } };			\
+	__read_once_size(&(x), __u.__c, sizeof(x));	\
+	__u.__val;					\
+})
+
+#if 0
+static __always_inline void __write_once_size(volatile void *p, void *res, int size)
+{
+	switch (size) {
+	case 1: *(volatile  __u8_alias_t *) p = *(__u8_alias_t  *) res; break;
+	case 2: *(volatile __u16_alias_t *) p = *(__u16_alias_t *) res; break;
+	case 4: *(volatile __u32_alias_t *) p = *(__u32_alias_t *) res; break;
+	case 8: *(volatile __u64_alias_t *) p = *(__u64_alias_t *) res; break;
+	default:
+		asm volatile ("" : : : "memory");
+		__builtin_memcpy((void *)p, (const void *)res, size);
+		asm volatile ("" : : : "memory");
+	}
+}
+
+#define WRITE_ONCE(x, val)				\
+({							\
+	union { typeof(x) __val; char __c[1]; } __u =	\
+		{ .__val = (val) }; 			\
+	__write_once_size(&(x), __u.__c, sizeof(x));	\
+	__u.__val;					\
+})
+#endif
+
+struct hmap_elem_ab {
+	__u64 a;
+	__u64 b;
+};
+
 struct hmap_elem {
 	__u64 init;
 	__u64 counter;
+	/* protected by bpf spin lock */
+	struct hmap_elem_ab ab;
+
 	struct bpf_timer timer;
+	struct bpf_spin_lock lock;
+	/* NOTE: that sizeof(lock) is 32 bit wide. If we need to move it in the
+	 * structure we should fill the holes manually to avoid the verfier
+	 * complains about the structure layout, e.g. strange errors such as
+	 * missing timer definition in map during timer set up, etc.
+	 */
+	__u32 pad0;
 };
 
 #define HMAP_MAX_ENTRIES 256
@@ -75,11 +156,45 @@ struct {
 	__type(value, struct test_hmap_elem);
 } test_hmap SEC(".maps");
 
-static __always_inline int update_test_hmap(__u64 counter)
+static __always_inline void
+update_map_block_protected(struct hmap_elem *helem,
+			   struct hmap_elem_ab *copy_ab)
 {
+	struct hmap_elem_ab *ab = &helem->ab;
+
+	bpf_spin_lock(&helem->lock);
+
+	/* some trival ops that must be considered as a whole */
+	++ab->a;
+	ab->b = ab->a << 1;
+
+	if (copy_ab)
+		memcpy(copy_ab, ab, sizeof(*copy_ab));
+
+	bpf_spin_unlock(&helem->lock);
+}
+
+#if ALWAYS_PRINT_UPDATE
+static __always_inline void print_hmap_elem_ab(struct hmap_elem_ab *ab)
+{
+	bpf_printk("hmap_elem_ab (a=%lu, b=%lu)", ab->a, ab->b);
+}
+#endif
+
+static __always_inline int update_test_hmap(struct hmap_elem *helem)
+{
+	struct hmap_elem_ab copy_ab;
 	struct test_hmap_elem *val;
+	__u64 counter;
 	__u32 key;
 
+	update_map_block_protected(helem, &copy_ab);
+#if ALWAYS_PRINT_UPDATE
+	print_hmap_elem_ab(&copy_ab);
+#endif
+
+	/* READ_ONCE as counter could be modified by another cpu */
+	counter = READ_ONCE(helem->counter);
 	key = counter & (TEST_HMAP_MAX_ENTRIES - 1);
 
 	val = bpf_map_lookup_elem(&test_hmap, &key);
@@ -100,8 +215,12 @@ static __always_inline int update_test_hmap(__u64 counter)
 
 static int timer_cb(void *map, int *key, struct hmap_elem *helem)
 {
-	bpf_printk("timer_cb called, key=%d, helem->counter=%lu",
-		   *key, helem->counter);
+	struct hmap_elem_ab copy_ab;
+
+	update_map_block_protected(helem, &copy_ab);
+
+	bpf_printk("timer_cb called, key=%d, helem->counter=%lu, (a=%lu, b=%lu)",
+		   *key, helem->counter, copy_ab.a, copy_ab.b);
 
 	return 0;
 }
@@ -186,11 +305,13 @@ lookup:
 	return val;
 }
 
+#define skb_data(addr)	((void *)(__u64)(addr))
+
 SEC("tc")
 int tc_ingress(struct __sk_buff *ctx)
 {
-	void *data_end = (void *)(__u64)ctx->data_end;
-	void *data = (void *)(__u64)ctx->data;
+	void *data_end = skb_data(ctx->data_end);
+	void *data = skb_data(ctx->data);
 	struct hmap_elem *helem;
 	struct ethhdr *l2;
 	struct iphdr *l3;
@@ -247,7 +368,7 @@ int tc_ingress(struct __sk_buff *ctx)
 	}
 out:
 	/* fill test map used for retrieving hash entries from userland */
-	update_test_hmap(helem->counter);
+	update_test_hmap(helem);
 
 	return TC_ACT_OK;
 
