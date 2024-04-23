@@ -48,6 +48,10 @@
 # define memmove(dest, src, n)  __builtin_memmove((dest), (src), (n))
 #endif
 
+#ifndef barrier
+#define barrier asm volatile ("" : : : "memory")
+#endif
+
 /*
  * Note: including linux/compiler.h or linux/kernel.h for the macros below
  * conflicts with vmlinux.h include in BPF files, so we define them here.
@@ -75,9 +79,9 @@ static __always_inline void __read_once_size(const volatile void *p, void *res, 
 	case 4: *(__u32_alias_t *) res = *(volatile __u32_alias_t *) p; break;
 	case 8: *(__u64_alias_t *) res = *(volatile __u64_alias_t *) p; break;
 	default:
-		asm volatile ("" : : : "memory");
+		barrier();
 		__builtin_memcpy((void *)res, (const void *)p, size);
-		asm volatile ("" : : : "memory");
+		barrier();
 	}
 }
 
@@ -89,7 +93,6 @@ static __always_inline void __read_once_size(const volatile void *p, void *res, 
 	__u.__val;					\
 })
 
-#if 0
 static __always_inline void __write_once_size(volatile void *p, void *res, int size)
 {
 	switch (size) {
@@ -98,9 +101,9 @@ static __always_inline void __write_once_size(volatile void *p, void *res, int s
 	case 4: *(volatile __u32_alias_t *) p = *(__u32_alias_t *) res; break;
 	case 8: *(volatile __u64_alias_t *) p = *(__u64_alias_t *) res; break;
 	default:
-		asm volatile ("" : : : "memory");
+		barrier();
 		__builtin_memcpy((void *)p, (const void *)res, size);
-		asm volatile ("" : : : "memory");
+		barrier();
 	}
 }
 
@@ -111,7 +114,6 @@ static __always_inline void __write_once_size(volatile void *p, void *res, int s
 	__write_once_size(&(x), __u.__c, sizeof(x));	\
 	__u.__val;					\
 })
-#endif
 
 /* in KB */
 #define RB_SIZE (254 * 1024)
@@ -333,6 +335,141 @@ lookup:
 
 #define skb_data(addr)	((void *)(__u64)(addr))
 
+
+#define LOG_SCALE_FACTOR	20
+
+#define DECAY_TABLE_MAX		10
+static const __u64 decay_table[DECAY_TABLE_MAX + 1] = {
+	1048576,
+	635993,
+	385750,
+	233969,
+	141909,
+	86072,
+	52206,
+	31664,
+	19205,
+	11649,
+	7065,
+};
+
+#define SWIN_SCALER		1000000000l /* 1sec in nanosec */
+struct slotted_window {
+	/* avoid multiple concurrent window updates */
+	__u64 sync;
+
+	__u64 tsw;
+	__u64 cnt;
+	__u64 avg;
+};
+
+struct {
+	__uint(type, BPF_MAP_TYPE_HASH);
+	__uint(max_entries, 1);
+	__type(key, __u32);
+	__type(value, struct slotted_window);
+} hmapsw SEC(".maps");
+
+#define __LOG_SCALE_IN(x)	(((__u64)(x)) << LOG_SCALE_FACTOR)
+#define __LOG_SCALE_OUT(x)	(((__u64)(x)) >> LOG_SCALE_FACTOR)
+
+#define try_swin_lock(sw)	__sync_lock_test_and_set(&(sw)->sync, 1)
+#define swin_unlock(sw)					\
+	do {						\
+		__sync_fetch_and_and(&(sw)->sync, 0);	\
+		barrier();				\
+	} while(0)
+
+static __always_inline int update_window(struct slotted_window *sw, __u64 ts)
+{
+	const __u64 cur_tsw = ts / SWIN_SCALER;
+	__u64 tsw = READ_ONCE(sw->tsw);
+	__u64 *cnt = &sw->cnt;
+	__u64 cnt_val;
+	__u64 delta;
+	__u64 avg;
+
+	if (cur_tsw <= tsw)
+		goto update;
+
+	if (try_swin_lock(sw))
+		/* busy, another cpu is currently closing the window */
+		goto update;
+
+	/* the current window must be closed */
+	delta = cur_tsw - tsw;
+	if (delta <= DECAY_TABLE_MAX) {
+		if (delta < 1)
+			/* impossibile, uhm? */
+			goto err;
+
+		cnt_val = READ_ONCE(*cnt);
+
+		avg = __LOG_SCALE_OUT((__LOG_SCALE_IN(cnt_val) *
+				      decay_table[(delta - 1)])) +
+			/* sw->avg is only read in this section */
+		      __LOG_SCALE_OUT(sw->avg * decay_table[delta]);
+	} else {
+		avg = 0;
+	}
+
+	WRITE_ONCE(sw->avg, avg);
+
+	/* TODO: send to RING BUFFER rather than print on trace */
+	bpf_printk("CLOSING window; tsw=%llu, avg(fp)=%llu, avg=%llu",
+		   tsw, avg, __LOG_SCALE_OUT(avg));
+
+	/* time to create a new window */
+	WRITE_ONCE(*cnt, 0);
+	WRITE_ONCE(sw->tsw, cur_tsw);
+
+	/* we cannot rely upon the __sync_lock_release() semantic, so we need
+	 * to use a workaround, e.g.: manually set the sw->sync back to 0.
+	 */
+	swin_unlock(sw);
+
+update:
+	cnt_val = __sync_fetch_and_add(cnt, 1);
+
+	bpf_printk("sw ts=%llu, cnt=%llu", ts, cnt_val);
+
+err:
+	/* bug */
+	return -EINVAL;
+}
+
+static __always_inline void eval_avg()
+{
+	__u64 ts = bpf_ktime_get_boot_ns();
+	struct slotted_window *sw;
+	const __u32 key = 0;
+	int rc;
+
+	sw = bpf_map_lookup_elem(&hmapsw, &key);
+	if (!sw) {
+		struct slotted_window _sw;
+
+		memset(&_sw, 0, sizeof(_sw));
+		rc = bpf_map_update_elem(&hmapsw, &key, &_sw, BPF_NOEXIST);
+		if (rc) {
+			if (rc != -EEXIST)
+				goto err;
+		}
+
+		sw = bpf_map_lookup_elem(&hmapsw, &key);
+		/* it must not fail */
+		if (!sw)
+			goto err;
+	}
+
+	update_window(sw, ts);
+	return;
+
+err:
+	bpf_printk("error while creating the slotted_window");
+	return;
+}
+
 SEC("tc")
 int tc_ingress(struct __sk_buff *ctx)
 {
@@ -395,6 +532,9 @@ int tc_ingress(struct __sk_buff *ctx)
 out:
 	/* fill test map used for retrieving hash entries from userland */
 	update_test_hmap(helem);
+
+	/* update slotted window */
+	eval_avg();
 
 	return TC_ACT_OK;
 
