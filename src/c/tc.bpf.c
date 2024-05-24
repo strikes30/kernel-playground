@@ -655,6 +655,60 @@ static __always_inline int eval_avg(bool start_timer)
 	return 0;
 }
 
+/* Define the offsetof macro if not already defined */
+#ifndef offsetof
+#define offsetof(TYPE, MEMBER) ((size_t) &((TYPE *)0)->MEMBER)
+#endif
+
+struct fookey {
+	__u32 a;
+	/* following fields are considered to be optional! */
+	__u8 __begin_opt__[0];
+	__u8 b;
+};
+
+#define FOOHMAP_SIZE	16
+struct foohashmap {
+	__uint(type, BPF_MAP_TYPE_HASH);
+	__uint(max_entries, FOOHMAP_SIZE);
+	__type(key, struct fookey);
+	__type(value, __u32);
+} foohmap SEC(".maps");
+
+static int __noinline foohmap_test(struct foohashmap *map)
+{
+	struct fookey key;
+	__u32 *val;
+
+	/* b is not initialized on the stack */
+	bpf_printk("<key.b (ptr): %lx, val: %x>", &key.b, key.b + 1);
+
+	/* clever way to zeroes optional data inside a data structure */
+	memset(&key.__begin_opt__, 0, sizeof(struct fookey) -
+				      offsetof(struct fookey, __begin_opt__));
+	key.a = 0xdeadbeef;
+
+	val = bpf_map_lookup_elem(map, &key);
+	if (!val) {
+		__u32 tval = 0xc01dcafe;
+		int rc;
+
+		rc = bpf_map_update_elem(map, &key, &tval, BPF_ANY);
+		if (rc) {
+			bpf_printk("cannot add an element to foohmap (%d)", rc);
+			return rc;
+		}
+
+		val = bpf_map_lookup_elem(map, &key);
+		if (!val)
+			return -ENOENT;
+	}
+
+	bpf_printk("key: %x, value: %x", key.a, *val);
+
+	return 0;
+}
+
 SEC("tc")
 int tc_ingress(struct __sk_buff *ctx)
 {
@@ -685,6 +739,8 @@ int tc_ingress(struct __sk_buff *ctx)
 	rc = eval_avg(true);
 	if (rc)
 		bpf_printk("error while evaluating avg algo (rc=%d)", rc);
+
+	foohmap_test(&foohmap);
 
 	return TC_ACT_OK;
 }
