@@ -14,6 +14,7 @@
 #
 
 set -x
+set -e
 
 readonly BPFTOOL="../bpftool/src/bpftool"
 readonly OBJ_PATH="../src/c/.output/"
@@ -75,6 +76,7 @@ ip -netns r0 route add fd00::/64 via fd01::2 vrf vrf1
 ip -netns r0 neigh add fd00::2 lladdr 00:00:00:00:01:02 dev veth0
 ip -netns r0 neigh add fd01::2 lladdr 00:00:00:00:11:02 dev veth1
 
+set +e
 read -r -d '' r0_env <<-EOF
 	mount -t bpf bpf "${BPFFS_PATH}"
 	mount -t tracefs nodev /sys/kernel/tracing
@@ -102,6 +104,7 @@ read -r -d '' r0_env <<-EOF
 	# ip vrf exec vrf0 ping fd01::1
 	/bin/bash
 EOF
+set -e
 
 ###################
 #### Node: r1 #####
@@ -123,6 +126,7 @@ ip -netns r1 link set dev veth1 address 00:00:00:00:11:02
 ip -netns r1 neigh add fd00::1 lladdr 00:00:00:00:01:01 dev veth0
 ip -netns r1 neigh add fd01::1 lladdr 00:00:00:00:11:01 dev veth1
 
+set +e
 read -r -d '' r1_env <<-EOF
 	set -x
 
@@ -166,6 +170,7 @@ read -r -d '' r1_env <<-EOF
 
 	/bin/bash
 EOF
+set -e
 
 sleep 1
 
