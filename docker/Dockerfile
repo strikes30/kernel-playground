@@ -18,6 +18,7 @@ RUN apt-get install -y \
         gcc-multilib \
         gpg \
         vim \
+	universal-ctags \
         git \
         g++ \
         cmake \
@@ -28,7 +29,17 @@ RUN apt-get install -y \
         iproute2 \
 	iputils-ping \
 	tcpdump \
-        net-tools
+        net-tools \
+        fakeroot \
+        build-essential \
+	ncurses-dev \
+	xz-utils \
+	bc \
+	flex \
+	bison \
+	pahole \
+	qemu-system-x86 \
+	debootstrap
 
 # install latest llvm for ebpf
 RUN mkdir -p /opt/llvm && cd /opt/llvm && \

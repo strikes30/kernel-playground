@@ -5,6 +5,6 @@ sudo podman run \
 	-d \
 	--replace \
 	--privileged \
-	--name pastrami-builder \
-	-v ../:/opt/pastrami \
-	-it localhost/pastrami-builder
+	--name qlearning-builder \
+	-v ../:/opt/qlearning \
+	-it localhost/qlearning-builder

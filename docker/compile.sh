@@ -3,7 +3,7 @@
 sudo podman run \
 	--rm \
 	--replace \
-	--name pastrami-builder \
-	-v ../:/opt/pastrami \
-	-t localhost/pastrami-builder \
-	bash -c "cd /opt/pastrami && ./init.sh"
+	--name qlearning-builder \
+	-v ../:/opt/qlearning \
+	-t localhost/qlearning-builder \
+	bash -c "cd /opt/qlearning && ./init.sh"
