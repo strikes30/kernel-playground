@@ -7,3 +7,6 @@
 [submodule "tests/vm"]
 	path = tests/vm
 	url = https://github.com/netgroup/linux-kernel-qemu-setup.git
+[submodule "kernel/linux"]
+	path = kernel/linux
+	url = https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git
