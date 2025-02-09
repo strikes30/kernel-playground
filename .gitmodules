@@ -4,3 +4,6 @@
 [submodule "bpftool"]
 	path = bpftool
 	url = https://github.com/libbpf/bpftool
+[submodule "tests/vm"]
+	path = tests/vm
+	url = https://github.com/netgroup/linux-kernel-qemu-setup.git
