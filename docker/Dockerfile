@@ -7,31 +7,31 @@ RUN apt-get clean && apt-get update
 # Install any packages or dependencies here
 RUN apt-get install -y \
 	tmux \
-        curl \
-        wget \
-        lsb-release \
-        software-properties-common \
-        pkg-config \
-        binutils-dev \
-        libcap-dev \
-        libelf-dev \
-        gcc-multilib \
-        gpg \
-        vim \
+	curl \
+	wget \
+	lsb-release \
+	software-properties-common \
+	pkg-config \
+	binutils-dev \
+	libcap-dev \
+	libelf-dev \
+	gcc-multilib \
+	gpg \
+	vim \
 	universal-ctags \
-        git \
-        g++ \
-        cmake \
-        libssl-dev \
-        libcurl4-openssl-dev \
-        systemd \
-        init \
-        iproute2 \
+	git \
+	g++ \
+	cmake \
+	libssl-dev \
+	libcurl4-openssl-dev \
+	systemd \
+	init \
+	iproute2 \
 	iputils-ping \
 	tcpdump \
-        net-tools \
-        fakeroot \
-        build-essential \
+	net-tools \
+	fakeroot \
+	build-essential \
 	ncurses-dev \
 	xz-utils \
 	bc \
