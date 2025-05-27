@@ -24,6 +24,7 @@ RUN apt-get install -y \
 	cmake \
 	libssl-dev \
 	libcurl4-openssl-dev \
+	libcap-ng-dev \
 	systemd \
 	init \
 	iproute2 \

@@ -1,3 +1,3 @@
 #!/bin/bash
 
-podman build -t qlearning-builder .
+podman build  --no-cache=true  -t kernel-builder .

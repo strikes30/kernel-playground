@@ -5,6 +5,6 @@ sudo podman run \
 	-d \
 	--replace \
 	--privileged \
-	--name qlearning-builder \
-	-v ../:/opt/qlearning \
-	-it localhost/qlearning-builder
+	--name kernel-builder \
+	-v ../:/opt/kernel \
+	-it localhost/kernel-builder
