@@ -1,0 +1,27 @@
+# Ignore object files
+*.o
+*.ko
+*.mod
+*.mod.o
+*.cmd
+
+# Ignore dependency files
+*.d
+
+# Ignore kernel build directories (if any)
+*.tmp
+*.bak
+
+# Ignore build logs
+*.log
+
+# Ignore any other build artifacts
+*.symvers
+*.order
+*.markers
+*.unsigned
+
+# Ignore output directories (if you have specific directories)
+build/
+modules/
+tmp/
