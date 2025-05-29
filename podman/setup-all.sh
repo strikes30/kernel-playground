@@ -1,6 +1,7 @@
 #!/bin/bash
 
 sudo podman run \
+	--privileged \
 	--rm \
 	--replace \
 	--name kernel-builder \
