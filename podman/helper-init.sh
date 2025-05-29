@@ -17,10 +17,10 @@ popd
 
 # Kernel setup
 #
-# 1) Copy the pre-shipped configuration file into the `kernel/linux` directory
+# 1) Copy the pre-shipped linux config file into the `kernel/linux` directory
 #    containing the kernel source code;
 # 2) Build the kernel;
-# 3) Build the out-of-tree (OTT) kernel module, and then copy the resulting
+# 3) Build the out-of-tree (OOT) kernel module, and then copy the resulting
 #    module into the VM subproject's shared folder. Specifically, place the
 #    module inside a directory shared with the VM instance at `/mnt/shared`.
 #    This allows the module to be loaded directly from the running guest OS by
