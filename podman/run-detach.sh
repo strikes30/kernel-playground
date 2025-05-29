@@ -6,5 +6,5 @@ sudo podman run \
 	--replace \
 	--privileged \
 	--name kernel-builder \
-	-v ../:/opt/kernel \
+	-v ../:/opt/kernel-playground \
 	-it localhost/kernel-builder

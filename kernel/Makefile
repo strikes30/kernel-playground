@@ -1,0 +1,44 @@
+
+# force to use bash otherwise some built-in do not work
+SHELL := /bin/bash
+
+# Determine the number of processors
+NUM_JOBS := $(shell nproc)
+
+.PHONY: config kbuild kmodule install
+
+all: config kbuild kmodule install
+
+config:
+	@echo "Entering configs folder..."
+	@if [ ! -f linux/.config ]; then \
+		echo "Copying config file..."; \
+		pushd configs && \
+			cp -av kernel_608_net-dev.config ../linux/.config && \
+		popd; \
+		pushd linux && \
+			make -j$(NUM_JOBS) olddefconfig && \
+		popd; \
+	else \
+		echo "Config file already exists. Skipping copy."; \
+	fi
+
+kbuild:
+	@echo "Building kernel with $(NUM_JOBS) parallel jobs..."
+	cd linux && \
+		make -j$(NUM_JOBS)
+
+install:
+	@echo "Entering the tests/vm folder..."
+	@if [ ! -f ../tests/vm/bzImage ]; then \
+		echo "Linking kernel bzImage in VM folder.."; \
+		pushd ../tests/vm && \
+			ln -sv ../../kernel/linux/arch/$(uname -m)/boot/bzImage . && \
+		popd; \
+	else \
+		echo "Kernel already soft-linked in VM folder. Skipping linking."; \
+	fi
+
+kmodule:
+	@echo "Building out-of-tree kernel module with $(NUM_JOBS) parallel jobs..."
+	cd modules && make all

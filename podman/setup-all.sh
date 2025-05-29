@@ -4,6 +4,6 @@ sudo podman run \
 	--rm \
 	--replace \
 	--name kernel-builder \
-	-v ../:/opt/kernel \
+	-v ../:/opt/kernel-playground \
 	-t localhost/kernel-builder \
-	bash -c "cd /opt/kernel && ./init.sh"
+	bash -c "cd /opt/kernel-playground/podman && ./helper-init.sh"
