@@ -4,6 +4,7 @@ SHELL := /bin/bash
 
 # Determine the number of processors
 NUM_JOBS := $(shell nproc)
+ARCH := $(shell uname -m)
 
 .PHONY: config kbuild kmodule install
 
@@ -33,7 +34,7 @@ install:
 	@if [ ! -f ../tests/vm/bzImage ]; then \
 		echo "Linking kernel bzImage in VM folder.."; \
 		pushd ../tests/vm && \
-			ln -sv ../../kernel/linux/arch/$(uname -m)/boot/bzImage . && \
+			ln -sv ../../kernel/linux/arch/$(ARCH)/boot/bzImage . && \
 		popd; \
 	else \
 		echo "Kernel already soft-linked in VM folder. Skipping linking."; \
