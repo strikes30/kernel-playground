@@ -12,7 +12,7 @@ git submodule update --init --recursive
 #
 # This builds a minimal rootfs to be used by the VM
 pushd tests/vm
-tests/vm/create-image.sh
+./create-image.sh
 popd
 
 # Kernel setup
