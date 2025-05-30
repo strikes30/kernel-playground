@@ -1,4 +1,4 @@
-# Environment Setup and Kernel Compilation Instructions
+# Environment Setup and Kernel Compiling Instructions
 
 This guide explains how to build the container image, set up the VM infrastructure, compile a custom kernel and modules, and run the environment using Podman.
 
