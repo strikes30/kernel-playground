@@ -54,11 +54,21 @@ This will run the environment in the background, allowing you to interact with i
 
 ## Accessing the Container
 
-To enter the running container's shell:
+To interact with the running container, execute:
 
 ```bash
-# podman exec -it kernel-builder bash
+podman exec -it kernel-builder bash
 ```
+
+Once inside, navigate to the kernel playground directory:
+
+```bash
+cd /opt/kernel-playground
+```
+
+> **Note:**
+> The `/opt/kernel-playground` directory inside the container is mounted from your host machine. Any changes made within this directory inside the container are immediately reflected on your host, and vice versa. This setup facilitates seamless development and testing.
+
 ---
 
 *Note:* Make sure you have Podman installed and properly configured on your system before starting.
