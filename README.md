@@ -37,7 +37,7 @@ Contains:
 1. Navigate to the `podman` folder:
 
    ```bash
-   cd path/to/your/repository/podman
+   cd podman
    ```
 
 2. Follow the instructions provided in the `README.md` within the `podman` folder to set up the containerized environment.
