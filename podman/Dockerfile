@@ -4,6 +4,9 @@ FROM ubuntu:24.04
 # Update package lists
 RUN apt-get clean && apt-get update
 
+# Set environment variables to avoid prompts during build
+ENV DEBIAN_FRONTEND=noninteractive
+
 # Install any packages or dependencies here
 RUN apt-get install -y \
 	tmux \
