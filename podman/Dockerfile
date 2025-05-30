@@ -1,6 +1,10 @@
 # Use the Ubuntu 24.04 base image
 FROM ubuntu:24.04
 
+# Replace sources.list with the specified mirror
+RUN sed -i 's|http://archive.ubuntu.com/ubuntu/|http://ubuntu.mirror.garr.it/ubuntu/|g' \
+	/etc/apt/sources.list.d/ubuntu.sources
+
 # Update package lists
 RUN apt-get clean && apt-get update
 
