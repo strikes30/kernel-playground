@@ -2,6 +2,8 @@
 
 This guide explains how to build the container image, set up the VM infrastructure, compile a custom kernel and modules, and run the environment using Podman.
 
+Note: Make sure you have Podman installed and properly configured on your system before starting!
+
 ---
 
 ## Building the Container Image
