@@ -7,7 +7,7 @@ Note: Make sure you have Podman installed and properly configured on your system
 # Prerequisites and Common Issues with Repository Ownership
 
 ## Prerequisites
-To avoid permission and ownership issues and to simplify the deployment of the entire repository, it is recommended to operate directly as the root user.
+To avoid permission and ownership issues and to simplify the deployment of the entire repository, it is requireed to operate directly as the root user.
 
 ### How to log in as root on Ubuntu:
 ```bash
@@ -19,9 +19,10 @@ After entering this command, you'll be logged in as root. Notice that the comman
 - Being logged in as root gives you full control over the system.
 - Use root with caution: executing random commands can harm your system.
 - Only the brave should operate as root; always be responsible :-)
+- You may read here and there that operating as root is not recommended. This is absolutely true for production system. In our case, you are running a VM with a development environment (and it is NOT recommended to use the VM for anything else, so you should not create harm to other critical stuff).
 
 ## Cloning the Repository
-Once logged in as root, you can clone the repository. The cloned repository will have `root` as both owner and group.
+Only after logging in as root, you can clone the repository! The cloned repository will have `root` as both owner and group.
 
 ---
 
@@ -51,9 +52,13 @@ This error occurs because Git detects that the directory ownership is inconsiste
 
 ---
 
-## How to Fix the Issue
+## How to Fix the Issue 
 
-### Solution:
+### Solution 1 (simple and preferred):
+
+Just delete the cloned repository and clone it again after loggin in as root.
+
+### Solution 2 (if you really want to mess up...):
 Change the ownership of the entire project directory to `root`. For example:
 ```bash
 # From the parent directory of your project
@@ -67,7 +72,7 @@ This command recursively sets the owner and group of the `kernel-playground` dir
 **Note:** Always prefer to operate as root only when necessary and exercise caution to prevent system issues.
 
 
-### Installing Podman on Ubuntu
+## Installing Podman on Ubuntu
 
 To install Podman on Ubuntu (20.04 or newer), run the following commands:
 
@@ -89,7 +94,7 @@ podman --version
 
 ## Building the Container Image
 
-First, build the Podman image that will be used to setup the environment:
+First, build the container image that will be used to setup the environment:
 
 ```bash
 # ./container-build.sh
