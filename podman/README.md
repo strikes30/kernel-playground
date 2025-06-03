@@ -4,6 +4,69 @@ This guide explains how to build the container image, set up the VM infrastructu
 
 Note: Make sure you have Podman installed and properly configured on your system before starting!
 
+# Prerequisites and Common Issues with Repository Ownership
+
+## Prerequisites
+To avoid permission and ownership issues and to simplify the deployment of the entire repository, it is recommended to operate directly as the root user.
+
+### How to log in as root on Ubuntu:
+```bash
+ $ sudo su
+```
+After entering this command, you'll be logged in as root. Notice that the command prompt changes from `$` to `#`.
+
+### Important:
+- Being logged in as root gives you full control over the system.
+- Use root with caution: executing random commands can harm your system.
+- Only the brave should operate as root; always be responsible :-)
+
+## Cloning the Repository
+Once logged in as root, you can clone the repository. The cloned repository will have `root` as both owner and group.
+
+---
+
+## The Issue Reported in Class
+
+### Scenario:
+- The repository was cloned using a user different from `root` (e.g., the default user `ubuntu`).
+- The ownership of the entire repository directory (e.g., `/home/ubuntu/kernel-playground/`) is set to that user (`ubuntu`).
+- When launching the container, the repository is mounted as a volume.
+- Inside the container, the default user is `root`.
+- The container's process attempts to initialize submodules via `git` (using `./setup-all.sh`), which detects a mismatch in ownership.
+
+### Error Message:
+```bash
+root@test-vm:/home/ubuntu/kernel-playground/podman# ./setup-all.sh
++ set -e
++ pushd ../
+/opt/kernel-playground /opt/kernel-playground/podman
++ git submodule update --init --recursive
+fatal: detected dubious ownership in repository at '/opt/kernel-playground'
+To add an exception for this directory, call:
+
+    git config --global --add safe.directory /opt/kernel-playground
+```
+
+This error occurs because Git detects that the directory ownership is inconsistent with the current user executing the command.
+
+---
+
+## How to Fix the Issue
+
+### Solution:
+Change the ownership of the entire project directory to `root`. For example:
+```bash
+# From the parent directory of your project
+sudo chown -R root:root kernel-playground/
+```
+
+This command recursively sets the owner and group of the `kernel-playground` directory to `root`, resolving the ownership conflict and allowing Git to initialize submodules without errors.
+
+---
+
+**Note:** Always prefer to operate as root only when necessary and exercise caution to prevent system issues.
+
+
 ### Installing Podman on Ubuntu
 
 To install Podman on Ubuntu (20.04 or newer), run the following commands:
