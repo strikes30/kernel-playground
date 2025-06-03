@@ -2,6 +2,26 @@
 
 This guide explains how to build the container image, set up the VM infrastructure, compile a custom kernel and modules, and run the environment using Podman.
 
+Note: Make sure you have Podman installed and properly configured on your system before starting!
+
+### Installing Podman on Ubuntu
+
+To install Podman on Ubuntu (20.04 or newer), run the following commands:
+
+```bash
+sudo apt update
+sudo apt -y install podman
+```
+
+To verify that Podman is installed correctly:
+
+```bash
+podman --version
+```
+
+**Note:** Podman is a daemonless container engine, so you don’t need to start a service like with Docker. You can use it immediately after installation.
+
+
 ---
 
 ## Building the Container Image
