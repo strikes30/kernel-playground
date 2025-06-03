@@ -111,6 +111,11 @@ $(OUTPUT)/%.skel.h: $(OUTPUT)/%.bpf.o | $(OUTPUT) $(BPFTOOL)
 # Build application binary
 $(KERNEL_APPS): %: $(OUTPUT)/%.bpf.o $(LIBBPF_OBJ) | $(OUTPUT)
 
+.PHONY: install
+install: shared
+	$(Q)find $(OUTPUT) -maxdepth 1 -name '*.bpf.o' \
+		! -name '*.tmp.bpf.o' -exec cp -av {} shared/ \;
+
 # delete failed targets
 .DELETE_ON_ERROR:
 
