@@ -81,7 +81,7 @@ process_ipv6hdr(struct hdr_cursor *nh, void *data_end)
 	 * drop any ICMPv6 packet.
 	 */
 	if (nexthdr == IPPROTO_ICMPV6) {
-		bpf_printk("XDP: recevied ICMPv6 packet! Drop it");
+		bpf_printk("XDP: received ICMPv6 packet! Drop it");
 		return XDP_DROP;
 	}
 
