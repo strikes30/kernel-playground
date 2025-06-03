@@ -70,6 +70,7 @@ read -r -d '' r0_env <<-EOF
 	#   the parent process's PID that launched this bash.
 	#
 	mount -t bpf bpf /sys/fs/bpf/
+	mkdir -p /sys/fs/bpf/netprog/{progs,maps}
 
 	mount -t tracefs nodev /sys/kernel/tracing
 
@@ -80,13 +81,15 @@ read -r -d '' r0_env <<-EOF
 	# loads a BPF program from the object file netprog.bpf.o into the
 	# kernel and attaches it with the identifier or link name netprog,
 	# storing it in the specified BPF filesystem directory /sys/fs/bpf/.
-	bpftool prog loadall netprog.bpf.o /sys/fs/bpf/netprog
+	bpftool prog \
+		loadall netprog.bpf.o /sys/fs/bpf/netprog/progs \
+		pinmaps /sys/fs/bpf/netprog/maps
 
 	# The command attaches an eBPF program pinned at
 	# /sys/fs/bpf/netprog/xdp_prog_drop_icmpv6 to the veth1 network
 	# interface using bpftool net attach xdp.
 	bpftool net attach xdp \
-		pinned /sys/fs/bpf/netprog/xdp_prog_drop_icmpv6 dev veth1
+		pinned /sys/fs/bpf/netprog/progs/xdp_prog_drop_icmpv6 dev veth1
 
         /bin/bash
 EOF
