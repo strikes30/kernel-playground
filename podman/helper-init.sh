@@ -6,7 +6,19 @@ set -e
 pushd ../
 
 # Init all submodules
-git submodule update --init --recursive
+for module in $(git submodule status | awk '{print $2}'); do
+	if [ "${module}" == "kernel/linux" ]; then
+		# A shallow clone with depth 1 fetches only the latest code
+		#snapshot of the Linux kernel repository, reducing download
+		#size and time, which is helpful for limited resources.
+		#However, it omits the full commit history, limiting access to
+		#historical data and some Git functionalities that rely on
+		#complete history.
+		git submodule update --init --recursive --depth 1 "${module}"
+	else
+		git submodule update --init --recursive "${module}"
+	fi
+done
 
 # Setup the VM
 #
