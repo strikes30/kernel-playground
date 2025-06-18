@@ -47,7 +47,7 @@ In the VM
 
    ```bash
    cd /mnt/shared
-   insmod snf_lkm.ko
+   insmod packet_counter.ko
    ```
 
 Now the module is running.
