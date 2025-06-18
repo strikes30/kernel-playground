@@ -1,114 +1,176 @@
-#include <linux/init.h>
 #include <linux/module.h>
 #include <linux/kernel.h>
+#include <linux/init.h>
 #include <linux/netfilter.h>
-#include <linux/netfilter_ipv6.h>
-#include <linux/ipv6.h>
-#include <linux/icmpv6.h>
-#include <net/netns/generic.h>
+#include <linux/netfilter_ipv4.h>
+#include <linux/ip.h>
+#include <linux/proc_fs.h>
+#include <linux/seq_file.h>
+#include <linux/atomic.h>
+#include <linux/tcp.h>
+#include <linux/udp.h>
 
-static unsigned int lkm_net_id;
+static atomic_t tcp_counter = ATOMIC_INIT(0);
+static atomic_t udp_counter = ATOMIC_INIT(0);
+static atomic_t port_counter[65536];
+static atomic_t total_counter = ATOMIC_INIT(0);
 
-struct lkm_netns_data {
-	struct nf_hook_ops nf_hops;
+static struct nf_hook_ops nfho;
+
+static struct proc_dir_entry *proc_tcp;
+static struct proc_dir_entry *proc_udp;
+
+static unsigned int packet_counter_hook(void *priv, struct sk_buff *skb, const struct nf_hook_state *state)
+{
+    struct iphdr *iph;
+    int dest_port = 0;
+
+    if (!skb)
+	{
+        return NF_ACCEPT;
+	}
+
+    iph = ip_hdr(skb);
+    
+	if (!iph)
+	{
+        return NF_ACCEPT;
+	}
+    
+	if (iph->protocol == IPPROTO_TCP) 
+	{   //pacchetto TCP
+        struct tcphdr *tcph = (struct tcphdr *)((__u8 *)iph + iph->ihl * 4);   //header, altrimenti non può prendere la porta
+        dest_port = ntohs(tcph->dest);
+        atomic_inc(&tcp_counter);
+        printk(KERN_INFO "TCP dest port: %u\n", dest_port);
+    } 
+	else if (iph->protocol == IPPROTO_UDP) 
+	{    //pacchetto UDP
+        struct udphdr *udph = (struct udphdr *)((__u8 *)iph + iph->ihl * 4);   //header, altrimenti non può prendere la porta
+        dest_port = ntohs(udph->dest);
+        atomic_inc(&udp_counter);
+        printk(KERN_INFO "UDP dest port: %u\n", dest_port);
+    }
+
+    if (dest_port < 65536) 
+	{
+        atomic_inc(&port_counter[dest_port]);
+	}
+
+	int total = atomic_inc_return(&total_counter);
+	if (total % 100 == 0) 
+	{
+        printk(KERN_INFO "packet_counter: raggiunti %d pacchetti totali\n", total);
+    }
+
+    return NF_ACCEPT;
+}
+
+static int port_show(struct seq_file *m, void *v)
+{
+    int i;
+    for (i = 0; i < 65536; ++i) 
+	{
+        int count = atomic_read(&port_counter[i]);
+        if (count > 0) 
+		{
+            seq_printf(m, "Porta %d: %d pacchetti\n", i, count);
+		}
+    }
+    return 0;
+}
+
+static int port_open(struct inode *inode, struct file *file)
+{
+    return single_open(file, port_show, NULL);
+}
+
+static int tcp_show(struct seq_file *m, void *v)
+{
+    seq_printf(m, "%d\n", atomic_read(&tcp_counter));
+    return 0;
+}
+
+static int udp_show(struct seq_file *m, void *v)
+{
+    seq_printf(m, "%d\n", atomic_read(&udp_counter));
+    return 0;
+}
+
+static int tcp_open(struct inode *inode, struct file *file)
+{
+    return single_open(file, tcp_show, NULL);
+}
+
+static int udp_open(struct inode *inode, struct file *file)
+{
+    return single_open(file, udp_show, NULL);
+}
+
+static const struct proc_ops tcp_proc_fops = {
+    .proc_open    = tcp_open,
+    .proc_read    = seq_read,
+    .proc_lseek   = seq_lseek,
+    .proc_release = single_release,
 };
 
-static unsigned int nf_callback(void *priv, struct sk_buff *skb,
-				const struct nf_hook_state *state)
-{
-	struct ipv6hdr *ip6h;
-
-	if (!skb || !pskb_may_pull(skb, sizeof(*ip6h))) {
-		printk("weird skb?! Drop it!\n");
-		return NF_DROP;
-	}
-
-	ip6h = ipv6_hdr(skb);
-	if (ip6h->nexthdr == IPPROTO_ICMPV6) {
-		printk("recevied ICMPv6 packet! Drop it!\n");
-		return NF_DROP;
-	}
-
-	return NF_ACCEPT;
-}
-
-static const struct nf_hook_ops lkm_nf_hook_ops_template = {
-	.hook		= nf_callback,		/* hook function */
-	.hooknum	= NF_INET_PRE_ROUTING,	/* received packets */
-	.pf		= PF_INET6,		/* IPv6 */
-	.priority 	= NF_IP6_PRI_FIRST,	/* max hook priority */
+static const struct proc_ops udp_proc_fops = {
+    .proc_open    = udp_open,
+    .proc_read    = seq_read,
+    .proc_lseek   = seq_lseek,
+    .proc_release = single_release,
 };
 
-static struct nf_hook_ops *lkm_nf_hook_ops(struct net *net)
-{
-	struct lkm_netns_data *netns_data = net_generic(net, lkm_net_id);
-
-	return &netns_data->nf_hops;
-}
-
-static int __net_init netns_init(struct net *net)
-{
-	struct nf_hook_ops *ops = lkm_nf_hook_ops(net);
-	int rc;
-
-	/* Technically, it isn't necessary because we can use the
-	 * lkm_nf_hook_ops_template directly. However, we demonstrate how to
-	 * allocate storage for each network namespace and initialize it,
-	 * primarily for documentation purposes.
-	 */
-	memcpy(ops, &lkm_nf_hook_ops_template, sizeof(*ops));
-
-	rc = nf_register_net_hook(net, ops);
-	if (rc) {
-		printk("cannot register netfilter hook\n");
-		return rc;
-	}
-
-	printk("netfilter hook registered\n");
-	return 0;
-}
-
-static void __net_exit netns_exit(struct net *net)
-{
-	struct nf_hook_ops *ops = lkm_nf_hook_ops(net);
-
-	nf_unregister_net_hook(net, ops);
-
-	printk("netfilter hook unregistered\n");
-}
-
-static struct pernet_operations lkm_netns_ops = {
-	.init = netns_init,
-	.exit = netns_exit,
-	.id = &lkm_net_id,
-	.size = sizeof(struct lkm_netns_data),
+static const struct proc_ops port_proc_fops = {
+    .proc_open    = port_open,
+    .proc_read    = seq_read,
+    .proc_lseek   = seq_lseek,
+    .proc_release = single_release,
 };
 
-static int __init lkm_init(void)
+static int __init packet_counter_init(void)
 {
-	int rc;
+    // Configura il Netfilter hook
+    nfho.hook = packet_counter_hook;
+    nfho.hooknum = NF_INET_PRE_ROUTING;  // intercetta i pacchetti prima del routing
+    nfho.pf = PF_INET;                   // famiglia IPv4
+    nfho.priority = NF_IP_PRI_FIRST;    // priorità alta
 
-	rc = register_pernet_subsys(&lkm_netns_ops);
-	if (rc) {
-		printk("cannot register the pernet ops\n");
-		return rc;
+    // Registra il Netfilter hook
+    nf_register_net_hook(&init_net, &nfho);
+
+    // Crea le entry in /proc
+    proc_tcp = proc_create("tcp_packets", 0444, NULL, &tcp_proc_fops);
+    proc_udp = proc_create("udp_packets", 0444, NULL, &udp_proc_fops);
+    proc_create("port_packets", 0444, NULL, &port_proc_fops);
+
+    printk(KERN_INFO "packet_counter: modulo caricato\n");
+    return 0;
+}
+
+static void __exit packet_counter_exit(void)
+{
+    // Rimuove il Netfilter hook
+    nf_unregister_net_hook(&init_net, &nfho);
+
+    // Rimuove le entry in /proc
+    if (proc_tcp) 
+	{
+        proc_remove(proc_tcp);
 	}
+    if (proc_udp) 
+	{
+        proc_remove(proc_udp);
+	}
+		remove_proc_entry("port_packets", NULL);
 
-	printk("lkm netfilter module registered\n");
-	return 0;
+    printk(KERN_INFO "packet_counter: modulo rimosso\n");
 }
 
-static void __exit lkm_exit(void)
-{
-	unregister_pernet_subsys(&lkm_netns_ops);
-
-	printk("lkm netfilter module unregistered\n");
-}
-
-module_init(lkm_init);
-module_exit(lkm_exit);
+module_init(packet_counter_init);
+module_exit(packet_counter_exit);
 
 MODULE_LICENSE("GPL");
-MODULE_AUTHOR("Andrea Mayer");
-MODULE_DESCRIPTION("Simple Linux kernel Netfilter Module for dropping ICMPv6 ingress packets");
-MODULE_VERSION("1.0.0");
+
+
+
